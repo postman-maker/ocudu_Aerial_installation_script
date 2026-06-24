@@ -1,0 +1,30 @@
+# PtpConfig for the fronthaul timing slave (LLS-C3: FH switch is the T-GM).
+# Runs ptp4l + phc2sys (G.8275.1) on the FH PF of each RAN node.
+apiVersion: ptp.openshift.io/v1
+kind: PtpConfig
+metadata:
+  name: ocudu-fh-slave
+  namespace: openshift-ptp
+spec:
+  profile:
+    - name: ocudu-fh-slave
+      interface: enp1s0f0np0             # CHANGE ME: FH PF carrying PTP
+      ptp4lOpts: "-2 -s --summary_interval -4"
+      phc2sysOpts: "-a -r -n 24 -R 8"
+      ptp4lConf: |
+        [global]
+        domainNumber 24                  # CHANGE ME: PTP domain of the FH switch
+        slaveOnly 1
+        priority1 128
+        priority2 128
+        network_transport L2
+        delay_mechanism P2P
+        logAnnounceInterval -3
+        logSyncInterval -4
+        logMinDelayReqInterval -4
+        tx_timestamp_timeout 50
+  recommend:
+    - profile: ocudu-fh-slave
+      priority: 10
+      match:
+        - nodeLabel: "ocudu.io/ran-node"

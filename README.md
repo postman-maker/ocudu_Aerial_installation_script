@@ -8,13 +8,28 @@ Gen12** server (NVIDIA **GH200 Grace Hopper**, `aarch64`) and installs:
 - **OCUDU** built as **both CU (`ocu`) and DU (`odu`)** — an O-RAN split 7.2
   capable gNB. CU and DU run co-located on this one host.
 
+## Deployment options
+
+| Path | Use it when | Where |
+|------|-------------|-------|
+| **Kubernetes (recommended)** | Cluster/operator-managed: Helm + Multus + SR-IOV + PTP Operator + GPU Operator. CU and DU run as pods. | [`kubernetes/`](kubernetes/README.md) |
+| **Bare-metal + systemd** | Single host, no cluster. CU/DU built on the host and run as systemd services. | `install.sh` (below) |
+
+Both paths share the same hardware/interface plan and `config.env`. The
+Kubernetes path is the answer to "Helm chart + Multus/SR-IOV/PTP/GPU operator"
+— start at **[`kubernetes/README.md`](kubernetes/README.md)**.
+
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `config.env` | All site/hardware values. **Edit before running.** |
-| `install.sh` | Phase-based installer/orchestrator. Run as root. |
+| `install.sh` | Bare-metal phase-based installer/orchestrator. Run as root. |
+| `kubernetes/` | Kubernetes deployment: Helm chart + operators + SR-IOV/PTP manifests. |
+| `images/Dockerfile.ocudu` | Builds the OCUDU `ocu`+`odu` container image (arm64). |
 | `README.md`  | This document. |
+
+### Bare-metal path (install.sh)
 
 ## Quick start
 

@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ocudu.duName" . }}-cfg
+  labels: {{- include "ocudu.labels" . | nindent 4 }}
+data:
+  # ${FH_PCI} is injected by render-config.sh from the SR-IOV device-plugin env.
+  # ${CU_F1_ADDR} is the CU service address (F1 over the cluster network).
+  du.yml.tmpl: |
+    f1ap:
+      cu_cp_addr: ${CU_F1_ADDR}
+      bind_addr: ${POD_IP}
+    f1u:
+      socket:
+        - bind_addr: ${POD_IP}
+    ru_ofh:
+      ru_bandwidth_MHz: {{ .Values.cell.bandwidthMHz }}
+      t1a_cp_dl: [285, 429]
+      t1a_cp_ul: [285, 429]
+      t1a_up: [96, 196]
+      ta4: [25, 110]
+      is_prach_cp_enabled: true
+      compr_method_ul: bfp
+      compr_bitwidth_ul: 9
+      compr_method_dl: bfp
+      compr_bitwidth_dl: 9
+      enable_ul_static_compr_hdr: true
+      enable_dl_static_compr_hdr: true
+      cells:
+        - network_interface: ${FH_PCI}
+          ru_mac_addr: {{ .Values.du.ruMac }}
+          du_mac_addr: {{ .Values.du.duMac }}
+          vlan_tag_cp: {{ .Values.du.vlan }}
+          vlan_tag_up: {{ .Values.du.vlan }}
+          ru_prach_port_id: [4, 5]
+          ru_dl_port_id: [0, 1]
+          ru_ul_port_id: [0, 1]
+    cell_cfg:
+      dl_arfcn: {{ .Values.cell.dlArfcn }}
+      band: {{ .Values.cell.band }}
+      channel_bandwidth_MHz: {{ .Values.cell.bandwidthMHz }}
+      common_scs: {{ .Values.cell.commonScs }}
+      plmn: "{{ .Values.cell.plmn }}"
+      tac: {{ .Values.cell.tac }}
+      pci: {{ .Values.cell.pci }}

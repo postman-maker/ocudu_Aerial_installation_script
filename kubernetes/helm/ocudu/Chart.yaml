@@ -1,0 +1,8 @@
+apiVersion: v2
+name: ocudu
+description: OCUDU CU (ocu) + DU (odu), O-RAN split 7.2, on NVIDIA GH200 with Aerial 26-1
+type: application
+version: 0.1.0
+appVersion: "26-1"
+keywords: [5g, oran, ran, cu, du, gh200, aerial, sriov, dpdk]
+home: https://gitlab.com/ocudu/ocudu

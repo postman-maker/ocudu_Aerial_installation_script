@@ -1,0 +1,17 @@
+# NG VFs (kernel netdevice) for N2 (SCTP/NGAP) + N3 (GTP-U) to the 5G core.
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetworkNodePolicy
+metadata:
+  name: ocudu-ng-netdev
+  namespace: sriov-network-operator
+spec:
+  resourceName: ng_netdev               # -> pods request nvidia.com/ng_netdev
+  nodeSelector:
+    ocudu.io/ran-node: "true"
+  priority: 20
+  numVfs: 4
+  nicSelector:
+    vendor: "15b3"
+    pfNames: ["enp1s0f1np1#0-3"]        # CHANGE ME: NG PF + VF range
+  deviceType: netdevice                 # kernel networking (SCTP/UDP)
+  isRdma: false

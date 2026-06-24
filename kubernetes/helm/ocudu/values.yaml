@@ -1,0 +1,75 @@
+# ===========================================================================
+# Values for the OCUDU CU + DU chart (GH200 / Aerial 26-1).
+# ===========================================================================
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: registry.example.com/ocudu     # CHANGE ME: where you pushed images/Dockerfile.ocudu
+  tag: "26-1"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Schedule everything onto the prepared RAN node(s).
+nodeSelector:
+  ocudu.io/ran-node: "true"
+tolerations: []
+
+# Multus secondary networks (created under kubernetes/sriov/). They must be
+# reachable from this release namespace (SriovNetwork.networkNamespace).
+networks:
+  fhNad: "fh-dpdk"      # fronthaul (DPDK/vfio-pci) - attached to the DU
+  ngNad: "ng-net"       # NG (N2/N3) static-IP'd - attached to the CU
+
+# Radio / PLMN (must match the RU and 5G core).
+cell:
+  plmn: "00101"
+  tac: 7
+  dlArfcn: 634548
+  band: 78
+  bandwidthMHz: 100
+  commonScs: 30
+  pci: 1
+
+core:
+  amfAddr: "10.60.0.100"     # AMF N2 address (5G core)
+  ngLocalIp: "10.60.0.10"    # this gNB's NG IP (must equal the ng-net static IPAM address)
+
+# F1 (CU<->DU). CU and DU are separate pods here, so F1 runs over the cluster
+# pod network via the CU Service. SCTP must be enabled in your primary CNI.
+f1:
+  cuServiceName: ""          # defaults to "<release>-cu" if empty
+
+# ---- CU (ocu) -------------------------------------------------------------
+cu:
+  replicas: 1
+  resources:
+    requests: { cpu: "4", memory: "8Gi", hugepages-1Gi: "4Gi" }
+    limits:   { cpu: "4", memory: "8Gi", hugepages-1Gi: "4Gi" }
+
+# ---- DU (odu) -------------------------------------------------------------
+du:
+  replicas: 1
+  gpu:
+    enabled: true            # request a GH200 GPU (Aerial-accelerated L1)
+    count: 1
+  ruMac: "aa:bb:cc:dd:ee:ff" # CHANGE ME: O-RU fronthaul MAC
+  duMac: "00:11:22:33:44:00" # CHANGE ME: DU fronthaul (VF) MAC
+  vlan: 2                    # CHANGE ME: FH VLAN (match SriovNetwork fh-dpdk)
+  resources:
+    requests:
+      cpu: "16"
+      memory: "16Gi"
+      hugepages-1Gi: "8Gi"
+      nvidia.com/fh_dpdk: "1"   # one fronthaul VF from the SR-IOV device plugin
+    limits:
+      cpu: "16"
+      memory: "16Gi"
+      hugepages-1Gi: "8Gi"
+      nvidia.com/fh_dpdk: "1"
+
+# Linux capabilities needed for real-time RAN threads, DPDK and mem locking.
+securityContext:
+  privileged: false
+  capabilities:
+    add: ["IPC_LOCK", "SYS_NICE", "NET_ADMIN", "NET_RAW", "SYS_TIME", "SYS_RESOURCE"]

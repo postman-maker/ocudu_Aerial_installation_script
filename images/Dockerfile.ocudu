@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1
+# ============================================================================
+# Dockerfile.ocudu - build OCUDU once, ship two entrypoints (ocu=CU, odu=DU).
+#
+# Target: linux/arm64 (GH200 Grace CPU). Build on the GH200 itself, or:
+#   docker buildx build --platform linux/arm64 -f images/Dockerfile.ocudu \
+#     --build-arg OCUDU_REF=main -t <registry>/ocudu:26-1 --push images/..
+#
+# SPDX-License-Identifier: BSD-3-Clause-Open-MPI
+# ============================================================================
+ARG UBUNTU_VERSION=22.04
+
+# ---------------------------------------------------------------------------
+# builder
+# ---------------------------------------------------------------------------
+FROM ubuntu:${UBUNTU_VERSION} AS builder
+ARG OCUDU_REPO=https://gitlab.com/ocudu/ocudu.git
+ARG OCUDU_REF=main
+ARG OCUDU_SPLIT=SPLIT_7_2
+ARG ARMPL_VERSION=24.10
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake make gcc g++ pkg-config git ca-certificates wget \
+        libmbedtls-dev libsctp-dev libyaml-cpp-dev libgtest-dev \
+        libdpdk-dev dpdk dpdk-dev environment-modules \
+    && rm -rf /var/lib/apt/lists/*
+
+# Arm Performance Libraries (FFT backend for the OCUDU PHY on aarch64).
+RUN cd /tmp \
+    && wget --no-check-certificate -O armpl.tar \
+       "https://developer.arm.com/-/cdn-downloads/permalink/Arm-Performance-Libraries/Version_${ARMPL_VERSION}/arm-performance-libraries_${ARMPL_VERSION}_deb_gcc.tar" \
+    && tar -xf armpl.tar \
+    && cd arm-performance-libraries_${ARMPL_VERSION}_deb/ \
+    && ./arm-performance-libraries_${ARMPL_VERSION}_deb.sh --accept \
+    && rm -rf /tmp/armpl.tar /tmp/arm-performance-libraries_${ARMPL_VERSION}_deb
+
+# Build OCUDU (produces apps/ocu/ocu and apps/du/odu).
+RUN git clone "${OCUDU_REPO}" /src/ocudu \
+    && cd /src/ocudu && git checkout "${OCUDU_REF}"
+RUN . /usr/share/modules/init/bash \
+    && export MODULEPATH="$MODULEPATH:/opt/arm/modulefiles" \
+    && (module load armpl || true) \
+    && cd /src/ocudu && mkdir -p build && cd build \
+    && cmake -DCMAKE_BUILD_TYPE=Release -DDU_SPLIT_TYPE=${OCUDU_SPLIT} -DENABLE_DPDK=ON ../ \
+    && make -j"$(nproc)" \
+    && make install
+
+# ---------------------------------------------------------------------------
+# runtime
+# ---------------------------------------------------------------------------
+FROM ubuntu:${UBUNTU_VERSION} AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libmbedtls14 libsctp1 libyaml-cpp0.7 libdpdk23 dpdk linuxptp \
+        iproute2 ethtool pciutils gettext-base libnuma1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# OCUDU binaries + shared libs (ARMPL + ocudu libs installed under /usr/local).
+COPY --from=builder /usr/local/ /usr/local/
+COPY --from=builder /opt/arm/ /opt/arm/
+RUN ldconfig
+
+# Config rendering helper used by the Helm initContainers.
+COPY images/render-config.sh /usr/local/bin/render-config.sh
+RUN chmod +x /usr/local/bin/render-config.sh
+
+# ocu (CU) and odu (DU) are both present; the Helm chart selects per pod.
+ENTRYPOINT ["/bin/bash", "-lc"]
+CMD ["ocu --help && odu --help"]

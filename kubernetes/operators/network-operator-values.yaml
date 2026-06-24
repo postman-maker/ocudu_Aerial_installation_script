@@ -1,0 +1,26 @@
+# NVIDIA Network Operator values - provides Multus, RDMA shared device plugin,
+# whereabouts IPAM and (optionally) the OFED driver for the ConnectX-7.
+# SR-IOV VF lifecycle itself is handled by the SR-IOV Network Operator.
+nfd:
+  enabled: false              # installed separately
+sriovNetworkOperator:
+  enabled: false              # we use the upstream SR-IOV operator chart instead
+
+# In-cluster OFED/DOCA driver. Disable if node-prep already installed DOCA-OFED.
+ofedDriver:
+  enabled: false
+
+# Multus CNI (needed for the FH/NG secondary interfaces).
+multus:
+  enabled: true
+
+# RDMA shared device plugin (GPUDirect RDMA from the NIC to GH200 GPU memory).
+rdmaSharedDevicePlugin:
+  enabled: true
+  resources:
+    - name: rdma_shared
+      ifNames: []             # leave empty to auto-detect ConnectX ports
+
+# Whereabouts cluster-wide IPAM for secondary networks.
+whereabouts:
+  enabled: true

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ocudu.cuName" . }}-cfg
+  labels: {{- include "ocudu.labels" . | nindent 4 }}
+data:
+  # Rendered at runtime by the initContainer (envsubst). ${POD_IP} is the F1-C
+  # bind on the cluster network; N2/N3 bind to the NG Multus interface IP.
+  cu.yml.tmpl: |
+    cu_cp:
+      amf:
+        addr: {{ .Values.core.amfAddr }}
+        bind_addr: {{ .Values.core.ngLocalIp }}
+        supported_tracking_areas:
+          - tac: {{ .Values.cell.tac }}
+            plmn_list:
+              - plmn: "{{ .Values.cell.plmn }}"
+                tai_slice_support_list:
+                  - sst: 1
+      f1ap:
+        bind_addr: ${POD_IP}
+    cu_up:
+      f1u:
+        socket:
+          - bind_addr: ${POD_IP}
+      gtpu:
+        bind_addr: {{ .Values.core.ngLocalIp }}
