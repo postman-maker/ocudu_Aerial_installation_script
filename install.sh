@@ -74,16 +74,27 @@ preflight() {
     # shellcheck disable=SC1091
     . /etc/os-release
     log "OS: ${PRETTY_NAME:-unknown}"
+    # NVIDIA CUDA/DOCA sbsa repos only publish for 22.04 / 24.04. Newer Ubuntu
+    # (e.g. 26.04 'resolute') has no matching repo, so fall back to ubuntu2404.
     case "${VERSION_ID:-}" in
-      22.04|24.04) ok "Ubuntu ${VERSION_ID} supported." ;;
-      *) warn "Ubuntu 22.04/24.04 recommended for Aerial 26-1; found ${VERSION_ID:-?}." ;;
+      22.04) UBUNTU_REPO="ubuntu2204"; ok "Ubuntu 22.04 supported." ;;
+      24.04) UBUNTU_REPO="ubuntu2404"; ok "Ubuntu 24.04 supported." ;;
+      *) UBUNTU_REPO="ubuntu2404"
+         warn "Ubuntu ${VERSION_ID:-?} is newer than Aerial 26-1's validated 22.04/24.04;"
+         warn "using NVIDIA '${UBUNTU_REPO}' (sbsa) repositories as the closest supported base."
+         warn "If the driver/DKMS fails to build against this kernel, use the distro"
+         warn "package instead:  apt install nvidia-driver-580-open cuda-toolkit-12-9" ;;
     esac
-    UBUNTU_REPO="ubuntu$(echo "${VERSION_ID:-22.04}" | tr -d '.')"   # ubuntu2204 / ubuntu2404
+    DOCKER_CODENAME="${VERSION_CODENAME:-noble}"
   else
-    UBUNTU_REPO="ubuntu2204"
+    UBUNTU_REPO="ubuntu2404"
+    DOCKER_CODENAME="noble"
     warn "/etc/os-release not found; assuming ${UBUNTU_REPO}."
   fi
-  export UBUNTU_REPO
+  # config.env may override the repo bases explicitly.
+  UBUNTU_REPO="${NV_UBUNTU_REPO:-$UBUNTU_REPO}"
+  DOCKER_CODENAME="${DOCKER_CODENAME_OVERRIDE:-$DOCKER_CODENAME}"
+  export UBUNTU_REPO DOCKER_CODENAME
 
   if command -v nvidia-smi >/dev/null 2>&1; then
     nvidia-smi -L 2>/dev/null | tee -a "$LOG_FILE" >&2 || true
@@ -275,7 +286,7 @@ phase_docker() {
     install -m0755 -d /etc/apt/keyrings
     curl -fsSL "https://download.docker.com/linux/ubuntu/gpg" | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release; echo "$VERSION_CODENAME") stable" \
+    echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${DOCKER_CODENAME:-noble} stable" \
       > /etc/apt/sources.list.d/docker.list
     apt-get update
     apt_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
