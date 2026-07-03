@@ -211,30 +211,45 @@ EOF
 }
 
 # ----------------------------------------------------------------------------
-# PHASE: doca - NVIDIA DOCA / MLNX_OFED host stack for ConnectX-7 (+ DPDK, ptp)
+# PHASE: doca - NIC stack for ConnectX-7 fronthaul (DPDK + rdma-core + linuxptp)
+#   NIC_STACK=inbox : inbox mlx5_core + rdma-core + Ubuntu DPDK (robust on new
+#                     kernels; ConnectX-7 DPDK uses the *bifurcated* mlx5 PMD, so
+#                     NO vfio-pci binding is needed).  <-- default
+#   NIC_STACK=doca  : NVIDIA DOCA-OFED host stack (only if you need DOCA/GPUDirect
+#                     features and your kernel is supported by DOCA).
 # ----------------------------------------------------------------------------
 phase_doca() {
-  banner "PHASE doca (DOCA-OFED host stack + DPDK + linuxptp)"
-  local keyring="/usr/share/keyrings/GPG-PUB-KEY-MELLANOX.gpg"
-  if [[ ! -f "$keyring" ]]; then
-    log "Adding NVIDIA DOCA repository."
-    curl -fsSL https://www.mellanox.com/downloads/DOCA/DOCA_v2.9.1/hosts/ubuntu-keyring.gpg 2>/dev/null \
-      | gpg --dearmor -o "$keyring" 2>/dev/null || \
-    wget -qO - https://linux.mellanox.com/public/repo/doca/GPG-KEY-Mellanox.pub \
-      | gpg --dearmor -o "$keyring" || warn "Could not import DOCA GPG key automatically."
-    echo "deb [signed-by=${keyring}] https://linux.mellanox.com/public/repo/doca/latest/${UBUNTU_REPO}/arm64-sbsa/ ./" \
-      > /etc/apt/sources.list.d/doca.list
-  fi
-  apt-get update || warn "DOCA repo update failed - check the repo URL for your DOCA release."
-  # doca-ofed pulls MLNX_OFED drivers, DPDK and tools for ConnectX-7.
-  apt_install doca-ofed || apt_install doca-all || apt_install rdma-core libibverbs1 ibverbs-utils
-  # PTP stack for fronthaul timing (ptp4l / phc2sys).
-  apt_install linuxptp || build_linuxptp
-  # Make the NIC tools available (mst, mlxconfig).
-  command -v mst >/dev/null 2>&1 && mst start 2>/dev/null || true
+  local stack="${NIC_STACK:-inbox}"
+  banner "PHASE doca / NIC stack (${stack})"
+  case "$stack" in
+    inbox)
+      # The ConnectX-7 ports already work with the inbox mlx5_core driver and
+      # SR-IOV is already enabled in firmware (sriov_totalvfs=16). For OFH we
+      # only need userspace: rdma-core (ibverbs + mlx5 provider), DPDK and PTP.
+      apt-get update || true
+      apt_install rdma-core ibverbs-providers libibverbs-dev ibverbs-utils \
+                  dpdk dpdk-dev libdpdk-dev linuxptp mstflint || build_linuxptp
+      ok "Inbox mlx5 + DPDK + rdma-core + linuxptp installed (no vfio-pci needed)."
+      ;;
+    doca)
+      local keyring="/usr/share/keyrings/GPG-PUB-KEY-MELLANOX.gpg"
+      if [[ ! -f "$keyring" ]]; then
+        log "Adding NVIDIA DOCA repository (${UBUNTU_REPO}/arm64-sbsa)."
+        wget -qO - https://linux.mellanox.com/public/repo/doca/GPG-KEY-Mellanox.pub \
+          | gpg --dearmor -o "$keyring" || warn "Could not import DOCA GPG key automatically."
+        echo "deb [signed-by=${keyring}] https://linux.mellanox.com/public/repo/doca/latest/${UBUNTU_REPO}/arm64-sbsa/ ./" \
+          > /etc/apt/sources.list.d/doca.list
+      fi
+      apt-get update || warn "DOCA repo update failed - check the repo URL for your DOCA release."
+      apt_install doca-ofed || apt_install doca-all || apt_install rdma-core ibverbs-providers ibverbs-utils
+      apt_install linuxptp || build_linuxptp
+      command -v mst >/dev/null 2>&1 && mst start 2>/dev/null || true
+      warn "A REBOOT may be required so the DOCA-OFED modules load."
+      ;;
+    *) die "Unknown NIC_STACK='${stack}' (use inbox or doca)" ;;
+  esac
   mark_done doca
-  warn "A REBOOT may be required so the new mlx5 / OFED modules load. Verify with: ibstat ; ethtool -i ${FH_IFNAME}"
-  ok "doca phase complete."
+  ok "doca phase complete. Verify with: ethtool -i ${FH_IFNAME} ; ibv_devices"
 }
 
 build_linuxptp() {
@@ -395,10 +410,17 @@ phase_network() {
   banner "PHASE network (NG IP, FH MTU/VF, PTP VF)"
 
   # --- NG interface (N2/N3 to the 5G core) ---
+  # NOTE: we deliberately do NOT change the default route (that belongs to the
+  # management link, e.g. enx04ab18f77160). We only add a specific route to the
+  # AMF via NG_GATEWAY when the AMF is off-subnet, so SSH/admin stays intact.
   if ip link show "${NG_IFNAME}" >/dev/null 2>&1; then
     ip link set "${NG_IFNAME}" up
     ip addr replace "${NG_LOCAL_IP}/${NG_PREFIX}" dev "${NG_IFNAME}"
-    [[ -n "${NG_GATEWAY}" ]] && { ip route replace default via "${NG_GATEWAY}" dev "${NG_IFNAME}" 2>/dev/null || true; }
+    if [[ -n "${NG_GATEWAY}" ]]; then
+      ip route replace "${AMF_ADDR}/32" via "${NG_GATEWAY}" dev "${NG_IFNAME}" 2>/dev/null \
+        && ok "Route to AMF ${AMF_ADDR} via ${NG_GATEWAY} added on ${NG_IFNAME}" \
+        || warn "Could not add AMF route (AMF may be on the NG subnet already)."
+    fi
     ok "NG interface ${NG_IFNAME} = ${NG_LOCAL_IP}/${NG_PREFIX} (AMF ${AMF_ADDR})"
   else
     warn "NG interface ${NG_IFNAME} not found - fix NG_IFNAME in config.env."
@@ -411,7 +433,9 @@ phase_network() {
     ok "Management interface ${MGMT_IFNAME} = ${MGMT_LOCAL_IP}"
   fi
 
-  # --- Fronthaul: jumbo frames on the PF, then create one VF for OFH+PTP ---
+  # --- Fronthaul: jumbo frames on the PF, then create one VF for OFH ---
+  # ConnectX-7 uses the *bifurcated* mlx5 PMD: the VF STAYS on mlx5_core and
+  # DPDK drives it via rdma-core. We do NOT bind it to vfio-pci.
   if ip link show "${FH_IFNAME}" >/dev/null 2>&1; then
     ip link set "${FH_IFNAME}" mtu "${FH_MTU}" up
     ok "FH PF ${FH_IFNAME} MTU=${FH_MTU} up"
@@ -421,26 +445,39 @@ phase_network() {
       echo 1 > "$sriov"
       ip link set "${FH_IFNAME}" vf 0 mac "${FH_DU_MAC}" spoofchk off 2>/dev/null || true
       ip link set "${FH_IFNAME}" vf 0 vlan "${FH_VLAN}" 2>/dev/null || true
-      ok "Created 1 VF on ${FH_IFNAME} (MAC ${FH_DU_MAC}, VLAN ${FH_VLAN})"
-      # Bind the VF to vfio-pci for DPDK / OFH.
-      modprobe vfio-pci 2>/dev/null || true
-      if command -v dpdk-devbind.py >/dev/null 2>&1; then
-        dpdk-devbind.py --bind=vfio-pci "${FH_VF_PCI}" 2>/dev/null \
-          && ok "Bound FH VF ${FH_VF_PCI} to vfio-pci" \
-          || warn "Could not bind ${FH_VF_PCI} to vfio-pci - check FH_VF_PCI (dpdk-devbind.py -s)."
-      else
-        warn "dpdk-devbind.py not found (install via DOCA/DPDK) - bind ${FH_VF_PCI} to vfio-pci manually."
-      fi
+      # Auto-detect the VF's PCI address (robust vs guessing the function number).
+      local vfpci=""
+      [[ -e "/sys/class/net/${FH_IFNAME}/device/virtfn0" ]] && \
+        vfpci="$(basename "$(readlink -f "/sys/class/net/${FH_IFNAME}/device/virtfn0")")"
+      vfpci="${vfpci:-${FH_VF_PCI}}"
+      echo "$vfpci" > "${STATE_DIR}/fh_vf_pci"
+      # Bring the VF netdev up so the mlx5 PMD can attach; keep it on mlx5_core.
+      for vfnet in /sys/class/net/${FH_IFNAME}/device/virtfn0/net/*; do
+        [[ -e "$vfnet" ]] && ip link set "$(basename "$vfnet")" up 2>/dev/null || true
+      done
+      ok "Created FH VF at PCI ${vfpci} (MAC ${FH_DU_MAC}, VLAN ${FH_VLAN}) on mlx5_core (no vfio bind)"
     else
-      warn "SR-IOV not writable at ${sriov} - enable SR-IOV in BIOS and via mlxconfig (SRIOV_EN=1)."
+      warn "SR-IOV not writable at ${sriov} - check the PF name / SR-IOV firmware."
     fi
   else
-    warn "FH interface ${FH_IFNAME} not found - fix FH_IFNAME in config.env."
+    warn "FH interface ${FH_IFNAME} not found or down - connect the O-RU/FH switch, then re-run: sudo ./install.sh network"
   fi
 
   setup_ptp
   mark_done network
   ok "network phase complete."
+}
+
+# Return the fronthaul VF PCI: prefer the value detected by phase_network,
+# else read it live from sysfs, else fall back to the config value.
+fh_vf_pci() {
+  if [[ -s "${STATE_DIR}/fh_vf_pci" ]]; then
+    cat "${STATE_DIR}/fh_vf_pci"
+  elif [[ -e "/sys/class/net/${FH_IFNAME}/device/virtfn0" ]]; then
+    basename "$(readlink -f "/sys/class/net/${FH_IFNAME}/device/virtfn0")"
+  else
+    echo "${FH_VF_PCI}"
+  fi
 }
 
 setup_ptp() {
@@ -529,6 +566,7 @@ EOF
   ok "Wrote ${cfgdir}/cu.yml"
 
   # --- DU config. F1 to CU over loopback, fronthaul over OFH (split 7.2). ---
+  local fhvf; fhvf="$(fh_vf_pci)"
   cat >"${cfgdir}/du.yml" <<EOF
 # OCUDU DU (odu) - split 7.2 over Open Fronthaul. Generated by install.sh.
 f1ap:
@@ -552,7 +590,7 @@ ru_ofh:
   enable_ul_static_compr_hdr: true
   enable_dl_static_compr_hdr: true
   cells:
-    - network_interface: ${FH_VF_PCI}   # DPDK PCI addr of the fronthaul VF (vfio-pci)
+    - network_interface: ${fhvf}   # DPDK PCI addr of the fronthaul VF (mlx5 PMD, bifurcated)
       ru_mac_addr: ${FH_RU_MAC}         # O-RU fronthaul MAC
       du_mac_addr: ${FH_DU_MAC}         # this DU's fronthaul (VF) MAC
       vlan_tag_cp: ${FH_VLAN}
