@@ -131,7 +131,7 @@ for u in ocudu-cu ocudu-du; do
     n="$(journalctl -u "$u" --since "$since" --no-pager 2>/dev/null | grep -iE 'error|fail|assert' | tail -5)"
     [[ -n "$n" ]] && echo "$n" | sed "s/^/  ${u}: /" || echo "  ${u}: none since $since"
   else
-    echo "  ${u}: not running"
+    echo "  ${u}: STANDBY (not started yet) - nothing to report"
   fi
 done
 echo
