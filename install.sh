@@ -576,6 +576,9 @@ cu_up:
   ngu:
     socket:
       - bind_addr: ${GNB_N3_BIND} # N3 / NG-U (GTP-U) bind toward the UPF
+
+log:
+  all_level: ${LOG_LEVEL}
 EOF
   ok "Wrote ${cfgdir}/cu.yml (AMF ${AMF_ADDR}, bind ${GNB_N2_BIND})"
 
@@ -632,6 +635,9 @@ cell_cfg:
   pci: ${PCI}
   nof_antennas_dl: ${NOF_ANTENNAS_DL}
   nof_antennas_ul: ${NOF_ANTENNAS_UL}
+
+log:
+  all_level: ${LOG_LEVEL}
 EOF
 
   # --- CPU pinning: put OCUDU threads ONTO the isolated cores (4-71). ---
