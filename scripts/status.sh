@@ -17,14 +17,14 @@ g=$'\033[32m'; r=$'\033[31m'; y=$'\033[33m'; b=$'\033[34m'; x=$'\033[0m'
 hd(){ printf '\n%s== %s ==%s\n' "$b" "$1" "$x"; }
 yn(){ [[ "$1" == "$2" ]] && printf '%sOK%s' "$g" "$x" || printf '%s%s%s' "$r" "$3" "$x"; }
 
-svc() { # name
-  local u="$1"
+svc() { # name [extra-note]
+  local u="$1" note="${2:-}"
   local act; act="$(systemctl is-active "$u" 2>/dev/null)"
   local res; res="$(systemctl show -p Result --value "$u" 2>/dev/null)"
   local rc;  rc="$(systemctl show -p NRestarts --value "$u" 2>/dev/null)"
   local label color
   case "$act" in
-    active)       label="RUNNING";  color="$g" ;;   # up and serving
+    active)       label="RUNNING";  color="$g" ;;   # process up (NOTE: PTP 'up' != 'synced')
     activating)   label="STARTING"; color="$y" ;;
     deactivating) label="STOPPING"; color="$y" ;;
     failed)       label="FAILED";   color="$r" ;;   # crashed / error
@@ -38,11 +38,52 @@ svc() { # name
   esac
   printf '  %-18s %s%-9s%s' "$u" "$color" "$label" "$x"
   [[ -n "${rc:-}" && "${rc:-0}" != 0 ]] && printf '  (restarts=%s%s%s)' "$y" "$rc" "$x"
+  [[ -n "$note" ]] && printf '  %s' "$note"
   printf '\n'
 }
 
-hd "systemd services   [RUNNING=up  STANDBY=idle/not started  STARTING  FAILED=error]"
-svc ocudu-cu; svc ocudu-du; svc ocudu-ptp4l; svc ocudu-phc2sys
+# Derive the actual PTP SYNC state (process 'RUNNING' does NOT mean 'locked').
+ptp4l_sync() {
+  local link; link="$(cat "/sys/class/net/${PTP_IFNAME}/operstate" 2>/dev/null)"
+  if [[ "$link" != up ]]; then printf '%sSYNC:NO-LINK%s (connect O-RU/T-GM to %s)' "$y" "$x" "$PTP_IFNAME"; return; fi
+  local rms; rms="$(journalctl -u ocudu-ptp4l -n 60 --no-pager 2>/dev/null | grep -oE 'rms +[0-9]+' | tail -1 | grep -oE '[0-9]+')"
+  local pstate; pstate="$(journalctl -u ocudu-ptp4l -n 80 --no-pager 2>/dev/null | grep -oE 'FAULTY|LISTENING|UNCALIBRATED|SLAVE|MASTER' | tail -1)"
+  if [[ -n "$rms" ]]; then
+    if   (( rms < 100 )); then printf '%sSYNC:LOCKED%s (rms=%sns)' "$g" "$x" "$rms"
+    else                       printf '%sSYNC:ACQUIRING%s (rms=%sns, want <100)' "$y" "$x" "$rms"; fi
+  elif [[ "$pstate" == SLAVE ]]; then printf '%sSYNC:ACQUIRING%s (slave, servo starting)' "$y" "$x"
+  elif [[ -n "$pstate" ]];       then printf '%sSYNC:%s%s (not yet slave)' "$y" "$pstate" "$x"
+  else                                printf '%sSYNC:UNKNOWN%s (no data yet)' "$y" "$x"; fi
+}
+phc2sys_sync() {
+  local link; link="$(cat "/sys/class/net/${PTP_IFNAME}/operstate" 2>/dev/null)"
+  [[ "$link" != up ]] && { printf '%sSYNC:NO-LINK%s' "$y" "$x"; return; }
+  local off; off="$(journalctl -u ocudu-phc2sys -n 40 --no-pager 2>/dev/null | grep -oE 'offset +-?[0-9]+' | tail -1 | grep -oE '\-?[0-9]+')"
+  if [[ -n "$off" ]]; then
+    local a=${off#-}
+    if (( a < 100 )); then printf '%sSYNC:LOCKED%s (offset=%sns)' "$g" "$x" "$off"
+    else                   printf '%sSYNC:ACQUIRING%s (offset=%sns)' "$y" "$x" "$off"; fi
+  else printf '%sSYNC:UNKNOWN%s (no data yet)' "$y" "$x"; fi
+}
+
+# CU operational note: is the N2/NGAP association to the AMF actually up?
+cu_note() {
+  [[ "$(systemctl is-active ocudu-cu 2>/dev/null)" == active ]] || { printf '(not started)'; return; }
+  if ss -np --sctp 2>/dev/null | grep -qE ':38412'; then printf '%sN2:UP%s' "$g" "$x"
+  else printf '%sN2:DOWN%s (core reachable?)' "$r" "$x"; fi
+}
+# DU operational note: cell up, still bringing up, or intentionally waiting.
+du_note() {
+  [[ "$(systemctl is-active ocudu-du 2>/dev/null)" == active ]] || { printf 'awaiting fronthaul/RU (start after PTP lock)'; return; }
+  if journalctl -u ocudu-du -n 300 --no-pager 2>/dev/null | grep -qiE 'DU started|Cell pci='; then printf '%scell:UP%s' "$g" "$x"
+  else printf '%sbringing up OFH/cell%s' "$y" "$x"; fi
+}
+
+hd "systemd services   [RUNNING=process up  STANDBY=idle  FAILED=error ; notes show link/sync state]"
+svc ocudu-cu      "$(cu_note)"
+svc ocudu-du      "$(du_note)"
+svc ocudu-ptp4l   "$(ptp4l_sync)"
+svc ocudu-phc2sys "$(phc2sys_sync)"
 
 hd "5G core (Open5GS docker)"
 if command -v docker >/dev/null 2>&1; then
