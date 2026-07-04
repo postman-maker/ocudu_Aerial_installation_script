@@ -27,8 +27,25 @@ UE_POOL="${LOCAL_CORE_UE_POOL:-10.45.0.0/16}"
 command -v docker >/dev/null || { echo "docker not installed - run: sudo ./install.sh docker"; exit 1; }
 [[ -d "$DOCKER_DIR" ]] || { echo "Not found: $DOCKER_DIR (run 'sudo ./install.sh ocudu' to clone OCUDU)"; exit 1; }
 
+# Open5GS' setup_tun.py programs UE-NAT via legacy iptables (libiptc), which
+# needs the host's xtables/NAT modules loaded. Ubuntu 26.04 defaults to nftables
+# and does not auto-load them, so the container fails with
+# "iptables who? (do you need to insmod?)". Load + persist them on the host.
+load_nat_modules() {
+  local mods="ip_tables iptable_nat iptable_filter nf_nat nf_conntrack xt_MASQUERADE"
+  echo "== Loading host NAT modules for the Open5GS UE tunnel =="
+  local m ok=1
+  for m in $mods; do
+    sudo modprobe "$m" 2>/dev/null || { echo "  WARN: modprobe $m failed"; ok=0; }
+  done
+  printf '%s\n' $mods | sudo tee /etc/modules-load.d/ocudu-open5gs-nat.conf >/dev/null
+  [[ $ok -eq 1 ]] && echo "  NAT modules loaded (persisted to /etc/modules-load.d/)." \
+    || echo "  Some modules missing - if the core still fails on ogstun, check the kernel's xtables support."
+}
+
 case "${1:-up}" in
   up)
+    load_nat_modules
     echo "== Building + starting Open5GS 5GC (docker) =="
     ( cd "$DOCKER_DIR" && docker compose up -d 5gc )
     echo "== Adding host route to UE pool ${UE_POOL} via ${AMF_IP} =="
