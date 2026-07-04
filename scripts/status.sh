@@ -67,7 +67,14 @@ done
   || echo "  FH VF: none (created by 'install.sh network')"
 grep -E 'HugePages_Total|HugePages_Free' /proc/meminfo | sed 's/^/  /'
 
-hd "recent errors (CU/DU, last 5 each)"
-journalctl -u ocudu-cu -n 300 --no-pager 2>/dev/null | grep -iE 'error|fail|assert' | tail -5 | sed 's/^/  CU: /'
-journalctl -u ocudu-du -n 300 --no-pager 2>/dev/null | grep -iE 'error|fail|assert' | tail -5 | sed 's/^/  DU: /'
+hd "errors since the CURRENT start (stale crash-loops excluded)"
+for u in ocudu-cu ocudu-du; do
+  since="$(systemctl show -p ActiveEnterTimestamp --value "$u" 2>/dev/null)"
+  if [[ -n "$since" ]]; then
+    n="$(journalctl -u "$u" --since "$since" --no-pager 2>/dev/null | grep -iE 'error|fail|assert' | tail -5)"
+    [[ -n "$n" ]] && echo "$n" | sed "s/^/  ${u}: /" || echo "  ${u}: none since $since"
+  else
+    echo "  ${u}: not running"
+  fi
+done
 echo
