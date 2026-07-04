@@ -613,8 +613,8 @@ ru_ofh:
   enable_dl_static_compr_hdr: true
   cells:
     - network_interface: ${fhvf}          # DPDK PCI of the FH VF (mlx5 PMD, bifurcated)
-      ru_mac_address: ${FH_RU_MAC}        # O-RU fronthaul MAC
-      du_mac_address: ${FH_DU_MAC}        # this DU's fronthaul (VF) MAC
+      ru_mac_addr: ${FH_RU_MAC}           # O-RU fronthaul MAC
+      du_mac_addr: ${FH_DU_MAC}           # this DU's fronthaul (VF) MAC
       vlan_tag_cp: ${FH_VLAN}
       vlan_tag_up: ${FH_VLAN}
       prach_port_id: [4, 5]               # eAxC IDs - must match the RU

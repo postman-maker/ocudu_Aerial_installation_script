@@ -34,8 +34,8 @@ data:
       enable_dl_static_compr_hdr: true
       cells:
         - network_interface: ${FH_PCI}
-          ru_mac_address: {{ .Values.du.ruMac }}
-          du_mac_address: {{ .Values.du.duMac }}
+          ru_mac_addr: {{ .Values.du.ruMac }}
+          du_mac_addr: {{ .Values.du.duMac }}
           vlan_tag_cp: {{ .Values.du.vlan }}
           vlan_tag_up: {{ .Values.du.vlan }}
           prach_port_id: [4, 5]
