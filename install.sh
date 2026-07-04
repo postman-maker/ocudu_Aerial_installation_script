@@ -592,26 +592,34 @@ f1u:
 
 ru_ofh:
   ru_bandwidth_MHz: ${CHANNEL_BW_MHZ}
-  t1a_cp_dl: [285, 429]
-  t1a_cp_ul: [285, 429]
-  t1a_up: [96, 196]
-  ta4: [25, 110]
+  # OFH timing windows (min/max, nanoseconds-ish units) - RU-specific, tune per
+  # your O-RU's integration guide. These are the OCUDU reference defaults.
+  t1a_max_cp_dl: 470
+  t1a_min_cp_dl: 258
+  t1a_max_cp_ul: 470
+  t1a_min_cp_ul: 258
+  t1a_max_up: 300
+  t1a_min_up: 85
+  ta4_max: 500
+  ta4_min: 85
   is_prach_cp_enabled: true
   compr_method_ul: bfp
   compr_bitwidth_ul: 9
   compr_method_dl: bfp
   compr_bitwidth_dl: 9
+  compr_method_prach: bfp
+  compr_bitwidth_prach: 9
   enable_ul_static_compr_hdr: true
   enable_dl_static_compr_hdr: true
   cells:
-    - network_interface: ${fhvf}   # DPDK PCI addr of the fronthaul VF (mlx5 PMD, bifurcated)
-      ru_mac_addr: ${FH_RU_MAC}         # O-RU fronthaul MAC
-      du_mac_addr: ${FH_DU_MAC}         # this DU's fronthaul (VF) MAC
+    - network_interface: ${fhvf}          # DPDK PCI of the FH VF (mlx5 PMD, bifurcated)
+      ru_mac_address: ${FH_RU_MAC}        # O-RU fronthaul MAC
+      du_mac_address: ${FH_DU_MAC}        # this DU's fronthaul (VF) MAC
       vlan_tag_cp: ${FH_VLAN}
       vlan_tag_up: ${FH_VLAN}
-      ru_prach_port_id: [4, 5]
-      ru_dl_port_id: [0, 1]
-      ru_ul_port_id: [0, 1]
+      prach_port_id: [4, 5]               # eAxC IDs - must match the RU
+      dl_port_id: [0, 1]
+      ul_port_id: [0, 1]
 
 cell_cfg:
   dl_arfcn: ${DL_ARFCN}
