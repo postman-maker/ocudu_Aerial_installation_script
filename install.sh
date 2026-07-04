@@ -573,8 +573,9 @@ cu_up:
   f1u:
     socket:
       - bind_addr: ${F1_CU_BIND} # F1-U bind (loopback)
-  gtpu:
-    bind_addr: ${GNB_N3_BIND}    # N3 / GTP-U toward the UPF
+  ngu:
+    socket:
+      - bind_addr: ${GNB_N3_BIND} # N3 / NG-U (GTP-U) bind toward the UPF
 EOF
   ok "Wrote ${cfgdir}/cu.yml (AMF ${AMF_ADDR}, bind ${GNB_N2_BIND})"
 

@@ -23,5 +23,6 @@ data:
       f1u:
         socket:
           - bind_addr: ${POD_IP}
-      gtpu:
-        bind_addr: {{ .Values.core.ngLocalIp }}
+      ngu:
+        socket:
+          - bind_addr: {{ .Values.core.ngLocalIp }}
