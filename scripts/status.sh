@@ -18,14 +18,30 @@ hd(){ printf '\n%s== %s ==%s\n' "$b" "$1" "$x"; }
 yn(){ [[ "$1" == "$2" ]] && printf '%sOK%s' "$g" "$x" || printf '%s%s%s' "$r" "$3" "$x"; }
 
 svc() { # name
-  local st; st="$(systemctl is-active "$1" 2>/dev/null)"
-  local rc; rc="$(systemctl show -p NRestarts --value "$1" 2>/dev/null)"
-  printf '  %-18s %s' "$1" "$([[ $st == active ]] && printf '%sactive%s' "$g" "$x" || printf '%s%s%s' "$r" "${st:-absent}" "$x")"
+  local u="$1"
+  local act; act="$(systemctl is-active "$u" 2>/dev/null)"
+  local res; res="$(systemctl show -p Result --value "$u" 2>/dev/null)"
+  local rc;  rc="$(systemctl show -p NRestarts --value "$u" 2>/dev/null)"
+  local label color
+  case "$act" in
+    active)       label="RUNNING";  color="$g" ;;   # up and serving
+    activating)   label="STARTING"; color="$y" ;;
+    deactivating) label="STOPPING"; color="$y" ;;
+    failed)       label="FAILED";   color="$r" ;;   # crashed / error
+    inactive)
+      if [[ "$res" == "success" || -z "$res" ]]; then
+        label="STANDBY";  color="$b"                # intentionally not started (no error)
+      else
+        label="STOPPED:${res}"; color="$r"
+      fi ;;
+    *) label="${act:-ABSENT}"; color="$r" ;;
+  esac
+  printf '  %-18s %s%-9s%s' "$u" "$color" "$label" "$x"
   [[ -n "${rc:-}" && "${rc:-0}" != 0 ]] && printf '  (restarts=%s%s%s)' "$y" "$rc" "$x"
   printf '\n'
 }
 
-hd "systemd services"
+hd "systemd services   [RUNNING=up  STANDBY=idle/not started  STARTING  FAILED=error]"
 svc ocudu-cu; svc ocudu-du; svc ocudu-ptp4l; svc ocudu-phc2sys
 
 hd "5G core (Open5GS docker)"
