@@ -38,9 +38,9 @@ data:
           du_mac_addr: {{ .Values.du.duMac }}
           vlan_tag_cp: {{ .Values.du.vlan }}
           vlan_tag_up: {{ .Values.du.vlan }}
-          prach_port_id: [4, 5]
-          dl_port_id: [0, 1]
-          ul_port_id: [0, 1]
+          prach_port_id: {{ .Values.cell.prachPortId | default "[4]" }}
+          dl_port_id: {{ .Values.cell.dlPortId | default "[0]" }}
+          ul_port_id: {{ .Values.cell.ulPortId | default "[0]" }}
     cell_cfg:
       dl_arfcn: {{ .Values.cell.dlArfcn }}
       band: {{ .Values.cell.band }}
@@ -48,4 +48,6 @@ data:
       common_scs: {{ .Values.cell.commonScs }}
       plmn: "{{ .Values.cell.plmn }}"
       tac: {{ .Values.cell.tac }}
+      nof_antennas_dl: {{ .Values.cell.nofAntennasDl | default 1 }}
+      nof_antennas_ul: {{ .Values.cell.nofAntennasUl | default 1 }}
       pci: {{ .Values.cell.pci }}

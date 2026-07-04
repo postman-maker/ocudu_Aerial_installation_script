@@ -617,9 +617,9 @@ ru_ofh:
       du_mac_addr: ${FH_DU_MAC}           # this DU's fronthaul (VF) MAC
       vlan_tag_cp: ${FH_VLAN}
       vlan_tag_up: ${FH_VLAN}
-      prach_port_id: [4, 5]               # eAxC IDs - must match the RU
-      dl_port_id: [0, 1]
-      ul_port_id: [0, 1]
+      prach_port_id: ${RU_PRACH_PORT_ID}  # eAxC IDs - must match the RU
+      dl_port_id: ${RU_DL_PORT_ID}        # len must equal nof_antennas_dl
+      ul_port_id: ${RU_UL_PORT_ID}        # len must equal nof_antennas_ul
 
 cell_cfg:
   dl_arfcn: ${DL_ARFCN}
@@ -629,6 +629,8 @@ cell_cfg:
   plmn: "${PLMN}"
   tac: ${TAC}
   pci: ${PCI}
+  nof_antennas_dl: ${NOF_ANTENNAS_DL}
+  nof_antennas_ul: ${NOF_ANTENNAS_UL}
 EOF
 
   # --- CPU pinning: put OCUDU threads ONTO the isolated cores (4-71). ---
