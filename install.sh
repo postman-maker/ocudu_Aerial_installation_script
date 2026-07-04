@@ -611,6 +611,7 @@ ru_ofh:
   compr_bitwidth_prach: 9
   enable_ul_static_compr_hdr: true
   enable_dl_static_compr_hdr: true
+  iq_scaling: ${RU_IQ_SCALING}
   cells:
     - network_interface: ${fhvf}          # DPDK PCI of the FH VF (mlx5 PMD, bifurcated)
       ru_mac_addr: ${FH_RU_MAC}           # O-RU fronthaul MAC

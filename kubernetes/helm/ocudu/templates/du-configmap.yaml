@@ -32,6 +32,7 @@ data:
       compr_bitwidth_prach: 9
       enable_ul_static_compr_hdr: true
       enable_dl_static_compr_hdr: true
+      iq_scaling: {{ .Values.cell.iqScaling | default 1.0 }}
       cells:
         - network_interface: ${FH_PCI}
           ru_mac_addr: {{ .Values.du.ruMac }}
