@@ -507,7 +507,9 @@ setup_ptp() {
   # (01:80:c2:00:00:0e) to the PF unless allmulticast is enabled - confirmed by
   # SyncE ESMC only appearing under `allmulticast on`. Enable it on the PF.
   ip link set "${PTP_IFNAME}" allmulticast on 2>/dev/null || true
-  local pre="ExecStartPre=-/sbin/ip link set ${PTP_IFNAME} allmulticast on"
+  # Re-apply MTU + up + allmulticast on every boot (runtime settings don't persist).
+  local pre="ExecStartPre=-/sbin/ip link set ${PTP_IFNAME} mtu ${FH_MTU} up
+ExecStartPre=-/sbin/ip link set ${PTP_IFNAME} allmulticast on"
 
   # If PTP rides a VLAN, create the sub-interface now (idempotent).
   if [[ -n "${PTP_VLAN:-}" ]]; then
