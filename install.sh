@@ -514,12 +514,19 @@ setup_ptp() {
 ExecStartPre=/sbin/ip link set ${rif} mtu ${FH_MTU} up"
   fi
 
+  # PTP role: slave (external T-GM/LLS-C3) or master (DU is grandmaster/LLS-C1).
+  local slave_only=1 role_note="slave (syncs to external T-GM)"
+  if [[ "${PTP_MODE:-slave}" == "master" ]]; then
+    slave_only=0; role_note="master (DU is the grandmaster; RU syncs to it)"
+  fi
+  log "PTP role: ${role_note}"
+
   mkdir -p /etc/linuxptp
   cat >/etc/linuxptp/ocudu-ptp4l.conf <<EOF
-# G.8275.1 multicast profile (LLS-C3, switch = T-GM) for O-RAN 7.2 fronthaul.
+# G.8275.1 L2 multicast profile for O-RAN 7.2 fronthaul. PTP_MODE=${PTP_MODE:-slave}.
 [global]
 domainNumber            ${PTP_DOMAIN}
-slaveOnly               1
+slaveOnly               ${slave_only}
 priority1               128
 priority2               128
 network_transport       L2
