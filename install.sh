@@ -503,15 +503,22 @@ setup_ptp() {
   timedatectl set-ntp false 2>/dev/null || true   # NTP must be off; PTP is the time source
   systemctl disable --now chrony 2>/dev/null || systemctl disable --now systemd-timesyncd 2>/dev/null || true
 
+  # This ConnectX-7 (inbox mlx5) does NOT deliver link-local PTP multicast
+  # (01:80:c2:00:00:0e) to the PF unless allmulticast is enabled - confirmed by
+  # SyncE ESMC only appearing under `allmulticast on`. Enable it on the PF.
+  ip link set "${PTP_IFNAME}" allmulticast on 2>/dev/null || true
+  local pre="ExecStartPre=-/sbin/ip link set ${PTP_IFNAME} allmulticast on"
+
   # If PTP rides a VLAN, create the sub-interface now (idempotent).
-  local pre=""
   if [[ -n "${PTP_VLAN:-}" ]]; then
     ip link add link "${PTP_IFNAME}" name "${rif}" type vlan id "${PTP_VLAN}" 2>/dev/null || true
     ip link set "${rif}" mtu "${FH_MTU}" up 2>/dev/null || true
+    ip link set "${rif}" allmulticast on 2>/dev/null || true
     ok "PTP VLAN sub-interface ${rif} (id ${PTP_VLAN}) ready"
-    # recreate it on every service start too (survives reboots without network phase)
-    pre="ExecStartPre=-/sbin/ip link add link ${PTP_IFNAME} name ${rif} type vlan id ${PTP_VLAN}
-ExecStartPre=/sbin/ip link set ${rif} mtu ${FH_MTU} up"
+    pre="${pre}
+ExecStartPre=-/sbin/ip link add link ${PTP_IFNAME} name ${rif} type vlan id ${PTP_VLAN}
+ExecStartPre=/sbin/ip link set ${rif} mtu ${FH_MTU} up
+ExecStartPre=-/sbin/ip link set ${rif} allmulticast on"
   fi
 
   # PTP role: slave (external T-GM/LLS-C3) or master (DU is grandmaster/LLS-C1).
