@@ -1,0 +1,18 @@
+# Fronthaul (FH) VFs bound to vfio-pci for DPDK / Open Fronthaul (split 7.2).
+# Edit pfNames/nicSelector to match the FH port on your DL384 (see node-prep).
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetworkNodePolicy
+metadata:
+  name: ocudu-fh-dpdk
+  namespace: sriov-network-operator
+spec:
+  resourceName: fh_dpdk                 # -> pods request nvidia.com/fh_dpdk
+  nodeSelector:
+    ocudu.io/ran-node: "true"
+  priority: 10
+  numVfs: 4
+  nicSelector:
+    vendor: "15b3"                      # Mellanox/NVIDIA
+    pfNames: ["enp1s0f0np0#0-3"]        # CHANGE ME: FH PF + VF range
+  deviceType: vfio-pci                  # DPDK userspace driver for OFH
+  isRdma: false

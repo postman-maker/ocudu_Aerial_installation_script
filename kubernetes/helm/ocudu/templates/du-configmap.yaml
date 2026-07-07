@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ocudu.duName" . }}-cfg
+  labels: {{- include "ocudu.labels" . | nindent 4 }}
+data:
+  # ${FH_PCI} is injected by render-config.sh from the SR-IOV device-plugin env.
+  # ${CU_F1_ADDR} is the CU service address (F1 over the cluster network).
+  du.yml.tmpl: |
+    f1ap:
+      cu_cp_addr: ${CU_F1_ADDR}
+      bind_addr: ${POD_IP}
+    f1u:
+      socket:
+        - bind_addr: ${POD_IP}
+    ru_ofh:
+      ru_bandwidth_MHz: {{ .Values.cell.bandwidthMHz }}
+      t1a_max_cp_dl: 470
+      t1a_min_cp_dl: 258
+      t1a_max_cp_ul: 470
+      t1a_min_cp_ul: 258
+      t1a_max_up: 300
+      t1a_min_up: 85
+      ta4_max: 500
+      ta4_min: 85
+      is_prach_cp_enabled: true
+      compr_method_ul: bfp
+      compr_bitwidth_ul: 9
+      compr_method_dl: bfp
+      compr_bitwidth_dl: 9
+      compr_method_prach: bfp
+      compr_bitwidth_prach: 9
+      enable_ul_static_compr_hdr: true
+      enable_dl_static_compr_hdr: true
+      iq_scaling: {{ .Values.cell.iqScaling | default 1.0 }}
+      cells:
+        - network_interface: ${FH_PCI}
+          ru_mac_addr: {{ .Values.du.ruMac }}
+          du_mac_addr: {{ .Values.du.duMac }}
+          vlan_tag_cp: {{ .Values.du.vlan }}
+          vlan_tag_up: {{ .Values.du.vlan }}
+          prach_port_id: {{ .Values.cell.prachPortId | default "[4]" }}
+          dl_port_id: {{ .Values.cell.dlPortId | default "[0]" }}
+          ul_port_id: {{ .Values.cell.ulPortId | default "[0]" }}
+    cell_cfg:
+      dl_arfcn: {{ .Values.cell.dlArfcn }}
+      band: {{ .Values.cell.band }}
+      channel_bandwidth_MHz: {{ .Values.cell.bandwidthMHz }}
+      common_scs: {{ .Values.cell.commonScs }}
+      plmn: "{{ .Values.cell.plmn }}"
+      tac: {{ .Values.cell.tac }}
+      nof_antennas_dl: {{ .Values.cell.nofAntennasDl | default 1 }}
+      nof_antennas_ul: {{ .Values.cell.nofAntennasUl | default 1 }}
+      pci: {{ .Values.cell.pci }}

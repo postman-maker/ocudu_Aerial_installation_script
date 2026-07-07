@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ocudu.cuName" . }}
+  labels: {{- include "ocudu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cu
+spec:
+  replicas: {{ .Values.cu.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: cu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: cu
+      annotations:
+        # NG (N2/N3) secondary interface from Multus/SR-IOV.
+        k8s.v1.cni.cncf.io/networks: {{ .Values.networks.ngNad | quote }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      nodeSelector: {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: render-config
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/render-config.sh", "/tmpl/cu.yml.tmpl", "/etc/ocudu/cu.yml"]
+          env:
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+            - name: AMF_ADDR
+              value: {{ .Values.core.amfAddr | quote }}
+          volumeMounts:
+            - { name: tmpl, mountPath: /tmpl }
+            - { name: rendered, mountPath: /etc/ocudu }
+      containers:
+        - name: ocu
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["ocu", "-c", "/etc/ocudu/cu.yml"]
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          resources: {{- toYaml .Values.cu.resources | nindent 12 }}
+          volumeMounts:
+            - { name: rendered, mountPath: /etc/ocudu }
+            - { name: hugepage, mountPath: /hugepages }
+      volumes:
+        - name: tmpl
+          configMap: { name: {{ include "ocudu.cuName" . }}-cfg }
+        - name: rendered
+          emptyDir: {}
+        - name: hugepage
+          emptyDir: { medium: HugePages }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ocudu.cuService" . }}
+  labels: {{- include "ocudu.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cu
+spec:
+  clusterIP: None              # headless: DU resolves the CU pod IP for F1
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: cu
+  ports:
+    - { name: f1c-sctp, port: 38472, protocol: SCTP }
+    - { name: f1u-udp,  port: 2152,  protocol: UDP }

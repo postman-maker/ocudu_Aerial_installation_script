@@ -1,0 +1,15 @@
+# Multus NetworkAttachmentDefinition for the fronthaul (DPDK/vfio-pci).
+# No IPAM - the DU uses the VF directly via DPDK (PCI passed in via env).
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetwork
+metadata:
+  name: fh-dpdk
+  namespace: sriov-network-operator
+spec:
+  resourceName: fh_dpdk
+  networkNamespace: ran                  # namespace where OCUDU runs
+  vlan: 2                                 # CHANGE ME: FH C/U-plane VLAN
+  spoofChk: "off"
+  trust: "on"
+  ipam: |
+    { }

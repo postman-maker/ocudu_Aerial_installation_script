@@ -1,0 +1,19 @@
+# NVIDIA GPU Operator values for GH200 (Grace Hopper).
+# GH200 requires the OPEN GPU kernel modules and the Aerial-validated driver.
+driver:
+  enabled: true
+  useOpenKmods: true          # mandatory on Grace Hopper
+  # version: "575.xx"          # pin to your Aerial 26-1 validated driver branch
+toolkit:
+  enabled: true               # NVIDIA Container Toolkit for the CRI
+devicePlugin:
+  enabled: true
+# MIG is not used for RAN; one whole GH200 GPU per DU pod.
+mig:
+  strategy: none
+# NFD is installed separately (install-operators.sh) - avoid double install.
+nfd:
+  enabled: false
+# DCGM/exporters optional - keep on for observability.
+dcgmExporter:
+  enabled: true

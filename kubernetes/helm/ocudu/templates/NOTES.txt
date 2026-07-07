@@ -1,0 +1,18 @@
+OCUDU CU + DU deployed (release: {{ .Release.Name }}, namespace: {{ .Release.Namespace }}).
+
+Components:
+  CU (ocu): deploy/{{ include "ocudu.cuName" . }}   - N2/N3 via Multus "{{ .Values.networks.ngNad }}"
+  DU (odu): deploy/{{ include "ocudu.duName" . }}   - fronthaul via Multus "{{ .Values.networks.fhNad }}"
+  F1 (CU<->DU): over the cluster network via headless service "{{ include "ocudu.cuService" . }}"
+                (SCTP must be enabled in your primary CNI).
+
+Check rollout:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "ocudu.cuName" . }} -c ocu
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "ocudu.duName" . }} -c odu
+
+Prerequisites that must already be in place:
+  * node-prep.sh run + node rebooted (hugepages, isolcpus, vfio, SR-IOV firmware)
+  * operators installed (GPU, Network, SR-IOV, PTP, Multus, NFD)
+  * SR-IOV policies + NADs applied (kubernetes/sriov/)
+  * PtpConfig applied and LOCKED (kubernetes/ptp/) - verify before expecting RF.
