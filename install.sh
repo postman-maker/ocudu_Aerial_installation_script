@@ -491,10 +491,28 @@ fh_vf_pci() {
   fi
 }
 
+# The interface ptp4l actually runs on: a VLAN sub-interface when PTP_VLAN is
+# set (O-RAN fronthaul usually tags PTP), else the raw PF.
+ptp_run_if() {
+  if [[ -n "${PTP_VLAN:-}" ]]; then echo "${PTP_IFNAME}.${PTP_VLAN}"; else echo "${PTP_IFNAME}"; fi
+}
+
 setup_ptp() {
-  log "Configuring PTP (linuxptp) for fronthaul timing on ${PTP_IFNAME}."
+  local rif; rif="$(ptp_run_if)"
+  log "Configuring PTP (linuxptp) for fronthaul timing on ${rif}."
   timedatectl set-ntp false 2>/dev/null || true   # NTP must be off; PTP is the time source
   systemctl disable --now chrony 2>/dev/null || systemctl disable --now systemd-timesyncd 2>/dev/null || true
+
+  # If PTP rides a VLAN, create the sub-interface now (idempotent).
+  local pre=""
+  if [[ -n "${PTP_VLAN:-}" ]]; then
+    ip link add link "${PTP_IFNAME}" name "${rif}" type vlan id "${PTP_VLAN}" 2>/dev/null || true
+    ip link set "${rif}" mtu "${FH_MTU}" up 2>/dev/null || true
+    ok "PTP VLAN sub-interface ${rif} (id ${PTP_VLAN}) ready"
+    # recreate it on every service start too (survives reboots without network phase)
+    pre="ExecStartPre=-/sbin/ip link add link ${PTP_IFNAME} name ${rif} type vlan id ${PTP_VLAN}
+ExecStartPre=/sbin/ip link set ${rif} mtu ${FH_MTU} up"
+  fi
 
   mkdir -p /etc/linuxptp
   cat >/etc/linuxptp/ocudu-ptp4l.conf <<EOF
@@ -510,7 +528,7 @@ logAnnounceInterval     -3
 logSyncInterval         -4
 logMinDelayReqInterval  -4
 tx_timestamp_timeout    50
-[${PTP_IFNAME}]
+[${rif}]
 EOF
 
   cat >/etc/systemd/system/ocudu-ptp4l.service <<EOF
@@ -518,7 +536,8 @@ EOF
 Description=OCUDU ptp4l (fronthaul PTP slave)
 After=network-online.target
 [Service]
-ExecStart=/usr/sbin/ptp4l -f /etc/linuxptp/ocudu-ptp4l.conf -i ${PTP_IFNAME} -m
+${pre}
+ExecStart=/usr/sbin/ptp4l -f /etc/linuxptp/ocudu-ptp4l.conf -i ${rif} -m
 Restart=always
 RestartSec=2
 [Install]
@@ -531,7 +550,7 @@ Description=OCUDU phc2sys (PHC -> system clock)
 After=ocudu-ptp4l.service
 Requires=ocudu-ptp4l.service
 [Service]
-ExecStart=/usr/sbin/phc2sys -s ${PTP_IFNAME} -w -m -R 8
+ExecStart=/usr/sbin/phc2sys -s ${rif} -w -m -R 8
 Restart=always
 RestartSec=2
 [Install]
